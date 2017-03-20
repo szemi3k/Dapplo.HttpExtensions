@@ -14,7 +14,7 @@ var dotnetVersion = Argument("dotnetVersion", "net45");
 var solution = File("./" + projectName + ".sln");
 
 Task("Default")
-	.IsDependentOn("Upload-Coverage-Report");
+	.IsDependentOn("Package");
 
 Task("Clean")
 	.Does(() =>
@@ -30,7 +30,7 @@ Task("Versioning")
 	.Does(() =>
 {
 	var version = GitVersion();
-		var projects = GetFiles("./**/*.csproj");
+	var projects = GetFiles("./**/*.csproj");
 
 	foreach(var project in projects)
 	{
@@ -61,6 +61,12 @@ Task("Build")
 		Configuration = configuration,
 		PlatformTarget = PlatformTarget.MSIL
 	});
+});
+
+Task("GitLink")
+	.IsDependentOn("Build")
+	.Does(() =>
+{
 	GitLink("./");
 });
 
@@ -90,6 +96,32 @@ Task("Upload-Coverage-Report")
     {
         RepoToken = EnvironmentVariable("COVERALLS_REPO_TOKEN")
     });
+});
+
+Task("Package")
+	//.IsDependentOn("GitLink")
+	//.IsDependentOn("Upload-Coverage-Report")
+	.Does(()=>
+{
+	var version = GitVersion();
+
+	var nuGetPackSettings   = new NuGetPackSettings {
+		Id                      = projectName,
+		Version                 = version.AssemblySemVer.ToString(),
+		Title                   = projectName,
+		Authors                 = new[] {"Robin Krom"},
+		Description             = "HttpExtensions",
+		Summary                 = "A simple .net HTTP client",
+		ProjectUrl              = new Uri("https://github.com/dapplo/dapplo.httpextensions"),
+		Files                   = new [] {
+										new NuSpecContent {Source = "net45/Dapplo.HttpExtensions.dll", Target = "lib/net45"},
+										new NuSpecContent {Source = "net46/Dapplo.HttpExtensions.dll", Target = "lib/net46"},
+										new NuSpecContent {Source = "netstandard1.3/Dapplo.HttpExtensions.dll", Target = "lib/netstandard1.3"},
+									},
+		BasePath                = 	string.Format("{0}/bin/{1}", projectName, configuration),
+		OutputDirectory         = "./packages"
+	};
+    NuGetPack(nuGetPackSettings);
 });
 
 RunTarget(target);
