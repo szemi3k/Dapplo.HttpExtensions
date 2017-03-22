@@ -12,6 +12,8 @@ var projectName = Argument("projectName", "Dapplo.HttpExtensions");
 var configuration = Argument("configuration", "Release");
 var dotnetVersion = Argument("dotnetVersion", "net45");
 var solution = File("./" + projectName + ".sln");
+var objPaths = string.Format("./**/obj/{0}/{1}", configuration, dotnetVersion);
+var binPaths = string.Format("./**/bin/{0}/{1}", configuration, dotnetVersion);
 
 Task("Default")
 	.IsDependentOn("Package");
@@ -19,8 +21,8 @@ Task("Default")
 Task("Clean")
 	.Does(() =>
 {
-	CleanDirectories(string.Format("./**/obj/{0}", configuration));
-	CleanDirectories(string.Format("./**/bin/{0}", configuration));
+	CleanDirectories(objPaths);
+	CleanDirectories(binPaths);
 	
 	// A nasty leftover
 	CleanDirectories("./tools/OpenCover/SampleSln");
@@ -61,30 +63,40 @@ Task("Build")
 		Configuration = configuration,
 		PlatformTarget = PlatformTarget.MSIL
 	});
+	
+	// Make sure the .dlls in the obj path are not found elsewhere
+	CleanDirectories(objPaths);
 });
 
 Task("GitLink")
 	.IsDependentOn("Build")
 	.Does(() =>
 {
-	GitLink("./");
+	GitLink("./", new GitLinkSettings {
+		Configuration	= configuration,
+		PdbDirectoryPath = string.Format("./{0}/bin/{1}/{2}", projectName, configuration, dotnetVersion)
+	});
 });
 
 Task("Coverage")
 	.IsDependentOn("Build")
 	.Does(() =>
 {
-	OpenCover(tool => {
-	  tool.XUnit2("./**/" + projectName + ".Tests.dll",
-		new XUnit2Settings {
-		  ShadowCopy = false,
-
-		});
-	  },
-	  new FilePath("./coverage.xml"),
-	  new OpenCoverSettings()
-		.WithFilter("+[" + projectName + "]*")
-		.WithFilter("-[" + projectName + ".Tests]*")
+	// Make XUnit 2 run via the OpenCover process
+	OpenCover(
+		// The test tool Lamdba
+		tool => {
+			tool.XUnit2("./**/" + projectName + ".Tests.dll",
+				new XUnit2Settings {
+					ShadowCopy = false
+				});
+			},
+		// The output path
+		new FilePath("./coverage.xml"),
+		// Settings
+		new OpenCoverSettings() {
+			ReturnTargetCodeOffset = 0
+		}.WithFilter("+[" + projectName + "]*").WithFilter("-[" + projectName + ".Tests]*")
 	);
 });
 
@@ -99,8 +111,8 @@ Task("Upload-Coverage-Report")
 });
 
 Task("Package")
-	//.IsDependentOn("GitLink")
-	//.IsDependentOn("Upload-Coverage-Report")
+	.IsDependentOn("GitLink")
+	.IsDependentOn("Upload-Coverage-Report")
 	.Does(()=>
 {
 	var version = GitVersion();
